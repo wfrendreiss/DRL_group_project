@@ -68,7 +68,7 @@ Due to outdated dependencies, we ported the notebook into a standalone Python sc
 
 ## Example Rollout and Results
 
-We have included an **rollout log** (5000 steps, 4 envs, Atari Breakout) and its corresponding **performance plot** for reference:
+We have included a **rollout log** (5000 steps, 4 envs, Atari Breakout) and its corresponding **performance plot** for reference:
 
 - **[output.txt](./output.txt)** — This file records the console output during a full example rollout of the pretrained model.
 - **[Breakout_scores.png](./Breakout_scores.png)** — This image visualizes the final performance metrics from the example rollout.
