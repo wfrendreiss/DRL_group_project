@@ -618,6 +618,84 @@ class DecisionTransformer(hk.Module):
         top_percentile=action_top_percentile)
     return act_sample, rng
 
+# CONTROL ENVIRONMENT DEFINITION
+CONTROL_NAMES = [
+  'CartPole-v1', 'MountainCar-v0', 'Pendulum-v1'
+]
+CONTROL_OBSERVATION_SHAPE = (84, 84, 1) # is this the size that the render function outputs?
+CONTROL_NUM_ACTIONS = 21 # maximum number of actions
+CONTROL_NUM_REWARDS = 4
+CONTROL_RETURN_RANGE = [
+  -20, 100
+]
+
+_FULL_ACTION_SET_ = [
+  'LEFT9', 'LEFT8', 'LEFT7', 'LEFT6', 'LEFT5', 'LEFT4', 'LEFT3', 'LEFT2', 'LEFT1',
+  'NOOP',
+  'RIGHT9', 'RIGHT8', 'RIGHT7', 'RIGHT6', 'RIGHT5', 'RIGHT4', 'RIGHT3', 'RIGHT2', 'RIGHT1'
+]
+
+_LIMITED_ACTION_SET_ = {
+  'CartPole-v1': [
+    'LEFT9', 'LEFT8', 'LEFT7', 'LEFT6', 'LEFT5', 'LEFT4', 'LEFT3', 'LEFT2', 'LEFT1',
+    'NOOP',
+    'RIGHT9', 'RIGHT8', 'RIGHT7', 'RIGHT6', 'RIGHT5', 'RIGHT4', 'RIGHT3', 'RIGHT2', 'RIGHT1'
+  ],
+  'MountainCar-v0': ['LEFT1', 'NOOP', 'RIGHT1'],
+  'Pendulum-v1': [
+    'LEFT9', 'LEFT8', 'LEFT7', 'LEFT6', 'LEFT5', 'LEFT4', 'LEFT3', 'LEFT2', 'LEFT1',
+    'NOOP',
+    'RIGHT9', 'RIGHT8', 'RIGHT7', 'RIGHT6', 'RIGHT5', 'RIGHT4', 'RIGHT3', 'RIGHT2', 'RIGHT1'
+  ]
+}
+
+LIMITED_ACTION_TO_FULL_ACTION = {
+    control_name: np.array(
+        [_FULL_ACTION_SET.index(i) for i in _LIMITED_ACTION_SET[control_name]])
+    for control_name in CONTROL_NAMES
+}
+
+# An array that Converts an action from a full action set to a game-specific
+# action set (Setting 0=NOOP if no game-specific action exists).
+FULL_ACTION_TO_LIMITED_ACTION = {
+    control_name: np.array([(_LIMITED_ACTION_SET[control_name].index(i)
+                          if i in _LIMITED_ACTION_SET[control_name] else 0)
+                         for i in _FULL_ACTION_SET]) for control_name in CONTROL_NAMES
+}
+
+class ControlEnvWrapper():
+  """Environment wrapper with a unified API."""
+
+  def __init__(self, control_name: str, full_action_set: Optional[bool] = True):
+    # Disable randomized sticky actions to reduce variance in evaluation.
+    self._env = atari_lib.create_atari_environment( # TODO: UPDATE
+        control_name, sticky_actions=False)
+    self.control_name = control_name
+    self.full_action_set = full_action_set
+
+  @property
+  def observation_space(self) -> gym.Space:
+    return self._env.observation_space
+
+  @property
+  def action_space(self) -> gym.Space:
+    if self.full_action_set:
+      return gym.spaces.Discrete(len(_FULL_ACTION_SET))
+    return self._env.action_space
+
+  def reset(self) -> np.ndarray:
+    """Reset environment and return observation."""
+    return _process_observation(self._env.reset())
+
+  def step(self, action: int) -> Tuple[np.ndarray, float, bool, Any]:
+    """Step environment and return observation, reward, done, info."""
+    if self.full_action_set:
+      # atari_py library expects limited action set, so convert to limited.
+      action = FULL_ACTION_TO_LIMITED_ACTION[self.control_name][action]
+    obs, rew, done, info = self._env.step(action)
+    obs = _process_observation(obs)
+    return obs, rew, done, info
+
 # ATARI ENVIRONMNET DEFINITION
 # @title Atari environment definition
 

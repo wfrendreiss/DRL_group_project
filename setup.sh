@@ -15,6 +15,7 @@ conda run -n gymenv pip install "tensorflow==1.15.5"
 conda run -n gymenv pip install --upgrade "tensorflow==1.15.5" "protobuf<4"
 conda run -n gymenv pip install "matplotlib"
 conda run -n gymenv pip install atari_py
+# conda run -n gymenv pip install gymnasium[classic-control]
 conda run -n gymenv pip install "tf-slim==1.1.0"
 conda run -n gymenv pip install "importlib-metadata==4.13.0"
 conda run -n gymenv pip install "optax==0.1.2"
