@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import pickle
 
 from dopamine.discrete_domains import atari_lib
+from dopamine.discrete_domains import gym_lib
 'TPU_DRIVER_MODE' in globals()
 TPU_DRIVER_MODE = 1
 
@@ -668,8 +669,9 @@ class ControlEnvWrapper():
 
   def __init__(self, control_name: str, full_action_set: Optional[bool] = True):
     # Disable randomized sticky actions to reduce variance in evaluation.
-    self._env = atari_lib.create_atari_environment( # TODO: UPDATE
-        control_name, sticky_actions=False)
+    self._env = gym_lib.create_gym_environment(control_name)
+    # atari_lib.create_atari_environment( # TODO: UPDATE
+        # control_name, sticky_actions=False)
     self.control_name = control_name
     self.full_action_set = full_action_set
 
@@ -678,7 +680,7 @@ class ControlEnvWrapper():
     return self._env.observation_space
 
   @property
-  def action_space(self) -> gym.Space:
+  def action_space(self) -> gym.Space: # TODO may have to fix this because of discrete vs. continuous
     if self.full_action_set:
       return gym.spaces.Discrete(len(_FULL_ACTION_SET))
     return self._env.action_space
@@ -687,12 +689,25 @@ class ControlEnvWrapper():
     """Reset environment and return observation."""
     return _process_observation(self._env.reset())
 
+  def continuizer(self, action): # makes 
+    if self.control_name == "MountainCar-v0": 
+      pass # TODO
+    elif self.control_name == "CartPole-v1":
+      pass # TODO
+    elif self.control_name == "Pendulum-v1":
+      pass # TODO
+    else:
+      print(f"Error: {self.control_name} unsupported.")
+      exit()
+
   def step(self, action: int) -> Tuple[np.ndarray, float, bool, Any]:
     """Step environment and return observation, reward, done, info."""
     if self.full_action_set:
       # atari_py library expects limited action set, so convert to limited.
       action = FULL_ACTION_TO_LIMITED_ACTION[self.control_name][action]
-    obs, rew, done, info = self._env.step(action)
+    
+    real_action = self.continuizer(action)
+    obs, rew, done, info = self._env.step(action) # TODO just make sure we are passing the correct action
     obs = _process_observation(obs)
     return obs, rew, done, info
 
