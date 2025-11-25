@@ -689,16 +689,66 @@ class ControlEnvWrapper():
     """Reset environment and return observation."""
     return _process_observation(self._env.reset())
 
-  def continuizer(self, action): # makes 
-    if self.control_name == "MountainCar-v0": 
-      pass # TODO
+  def continuizer(self, action):
+    """Convert a limited-action-index into the real env action.
+
+    `action` is expected to be an integer index into the limited action set
+    for this control env (i.e. index into _LIMITED_ACTION_SET_[control_name]).
+    """
+    limited_actions = _LIMITED_ACTION_SET_[self.control_name]
+    if not (0 <= action < len(limited_actions)):
+      raise ValueError(f"Action index {action} out of range for {self.control_name}")
+
+    act_name = limited_actions[action]
+
+    if self.control_name == "MountainCar-v0":
+      # limited set is ['LEFT1', 'NOOP', 'RIGHT1']
+      if act_name.startswith('LEFT'):
+        return 0
+      if act_name == 'NOOP':
+        return 1
+      if act_name.startswith('RIGHT'):
+        return 2
+      return 1
+
+    # CartPole: gym classic uses discrete {0: push-left, 1: push-right}
     elif self.control_name == "CartPole-v1":
-      pass # TODO
+      if act_name.startswith('LEFT'):
+        return 0
+      if act_name == 'NOOP':
+        # no NOOP on CartPole: treat as no-op as left (or choose whichever you prefer)
+        return 0
+      if act_name.startswith('RIGHT'):
+        return 1
+      return 0
+
+    # Pendulum: continuous torque action in range [-2.0, 2.0]
     elif self.control_name == "Pendulum-v1":
-      pass # TODO
+      # Parse magnitude from names like 'LEFT3' or 'RIGHT7'
+      if act_name == 'NOOP':
+        return np.array([0.0], dtype=np.float32)
+      # extract side and magnitude
+      side = 'NOOP'
+      magnitude = 1
+      if act_name.startswith('LEFT'):
+        side = 'LEFT'
+        magnitude = int(act_name.replace('LEFT', '') or 1)
+      elif act_name.startswith('RIGHT'):
+        side = 'RIGHT'
+        magnitude = int(act_name.replace('RIGHT', '') or 1)
+      # map magnitude 1..9 -> torque magnitude in [2/9, 2.0]
+      max_torque = 2.0
+      # protect against weird magnitudes
+      magnitude = max(1, min(9, magnitude))
+      torque = (magnitude / 9.0) * max_torque
+      if side == 'LEFT':
+        torque = -torque
+      return np.array([torque], dtype=np.float32)
+
     else:
-      print(f"Error: {self.control_name} unsupported.")
-      exit()
+      raise ValueError(f"Error: {self.control_name} unsupported in continuizer.")
+
+
 
   def step(self, action: int) -> Tuple[np.ndarray, float, bool, Any]:
     """Step environment and return observation, reward, done, info."""
@@ -707,7 +757,8 @@ class ControlEnvWrapper():
       action = FULL_ACTION_TO_LIMITED_ACTION[self.control_name][action]
     
     real_action = self.continuizer(action)
-    obs, rew, done, info = self._env.step(action) # TODO just make sure we are passing the correct action
+    # obs, rew, done, info = self._env.step(action) # TODO just make sure we are passing the correct action
+    obs, rew, done, info = self._env.step(real_action)
     obs = _process_observation(obs)
     return obs, rew, done, info
 
