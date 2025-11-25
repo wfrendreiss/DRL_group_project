@@ -14,6 +14,7 @@ tf.compat.v1.enable_eager_execution()
 import tensorflow_datasets as tfds
 import time
 import gym
+import gymnasium
 import matplotlib.pyplot as plt
 import pickle
 
@@ -42,6 +43,78 @@ model_params, model_state = pickle.load(open('checkpoint_38274228.pkl', 'rb'))
 
 model_param_count = sum(x.size for x in jax.tree_util.tree_leaves(model_params))
 print('Number of model parameters: %.2e' % model_param_count)
+
+# PREPROCESSING
+def convert_render(img):
+  gray_img = (img[:,:,0] + img[:,:,1] + img[:,:,2]) / 3 # averaging for RGB -> grayscale
+  # now the image is a 400 x 600 grayscale
+
+  conv_layer = tf.keras.layers.Conv2D(
+    filters=1,          # Number of output filters/channels
+    kernel_size=(4, 6),  # Size of the convolution kernel (e.g., 3x3)
+    strides=(4, 6)      # How far the kernel moves at each step
+  )
+  tens = tf.convert_to_tensor(gray_img)
+  tens1 = tf.reshape(tens, (1, 400, 600, 1))
+  resized = conv_layer(tens1).numpy() # compressed
+
+  gray_img = resized[0, 8:92, 8:92, :] # center cropped
+  # gray_img = cropped_tensor.numpy()
+
+  # returns the 84 x 84 x 1 image :)
+  return gray_img
+
+def create_gym_environment(
+    environment_name=None,
+    # version='v0',
+    use_legacy_gym=False,
+    # use_ppo_preprocessing=False,
+):
+  """Wraps a Gym environment with some basic preprocessing.
+
+  altered from dopamine source code
+
+  Args:
+    environment_name: str, the name of the environment to run.
+    version: str, version of the environment to run.
+    use_legacy_gym: bool, whether to use the legacy Gym API.
+    use_ppo_preprocessing: bool, whether to use PPO-specific preprocessing.
+
+  Returns:
+    A Gym environment with some standard preprocessing.
+  """
+  assert environment_name is not None
+
+  # hardcoded for our purposes
+  if environment_name == "CartPole" or environment_name == "Pendulum":
+    version = "v1"
+  elif environment_name == "MountainCar":
+    version = "v0"
+
+  full_game_name = '{}-{}'.format(environment_name, version)
+  # if use_legacy_gym:
+  #   env = legacy_gym.make(full_game_name)
+  #   if use_ppo_preprocessing:
+  #     env = legacy_gym.wrappers.ClipAction(env)
+  #     env = legacy_gym.wrappers.NormalizeObservation(env)
+  #     env = legacy_gym.wrappers.TransformObservation(
+  #         env, lambda obs: np.clip(obs, -10, 10)
+  #     )
+  #     env = legacy_gym.wrappers.NormalizeReward(env)
+  #     env = legacy_gym.wrappers.TransformReward(
+  #         env, lambda reward: np.clip(reward, -10, 10)
+  #     )
+  # else:
+  env = gymnasium.make(full_game_name, render_mode="rgb_array")
+  # Strip out the TimeLimit wrapper from Gym, which caps us at 200 steps.
+  # if isinstance(env, TimeLimit):
+    # env = env.env
+  # Wrap the returned environment in a class which conforms to the API expected
+  # by Dopamine.
+  env = GymPreprocessing(env, use_legacy_gym=use_legacy_gym)
+  return env
+
+# RENDERING
 
 # UTILITIES
 # @title Utilities
@@ -621,29 +694,29 @@ class DecisionTransformer(hk.Module):
 
 # CONTROL ENVIRONMENT DEFINITION
 CONTROL_NAMES = [
-  'CartPole-v1', 'MountainCar-v0', 'Pendulum-v1'
+  'CartPole', 'MountainCar', 'Pendulum'
 ]
-CONTROL_OBSERVATION_SHAPE = (84, 84, 1) # is this the size that the render function outputs?
+CONTROL_OBSERVATION_SHAPE = (84, 84, 1) # is this the size that the render function outputs? TODO
 CONTROL_NUM_ACTIONS = 21 # maximum number of actions
 CONTROL_NUM_REWARDS = 4
 CONTROL_RETURN_RANGE = [
   -20, 100
 ]
 
-_FULL_ACTION_SET_ = [
+_FULL_ACTION_SET = [
   'LEFT9', 'LEFT8', 'LEFT7', 'LEFT6', 'LEFT5', 'LEFT4', 'LEFT3', 'LEFT2', 'LEFT1',
   'NOOP',
   'RIGHT9', 'RIGHT8', 'RIGHT7', 'RIGHT6', 'RIGHT5', 'RIGHT4', 'RIGHT3', 'RIGHT2', 'RIGHT1'
 ]
 
-_LIMITED_ACTION_SET_ = {
-  'CartPole-v1': [
+_LIMITED_ACTION_SET = {
+  'CartPole': [
     'LEFT9', 'LEFT8', 'LEFT7', 'LEFT6', 'LEFT5', 'LEFT4', 'LEFT3', 'LEFT2', 'LEFT1',
     'NOOP',
     'RIGHT9', 'RIGHT8', 'RIGHT7', 'RIGHT6', 'RIGHT5', 'RIGHT4', 'RIGHT3', 'RIGHT2', 'RIGHT1'
   ],
-  'MountainCar-v0': ['LEFT1', 'NOOP', 'RIGHT1'],
-  'Pendulum-v1': [
+  'MountainCar': ['LEFT1', 'NOOP', 'RIGHT1'],
+  'Pendulum': [
     'LEFT9', 'LEFT8', 'LEFT7', 'LEFT6', 'LEFT5', 'LEFT4', 'LEFT3', 'LEFT2', 'LEFT1',
     'NOOP',
     'RIGHT9', 'RIGHT8', 'RIGHT7', 'RIGHT6', 'RIGHT5', 'RIGHT4', 'RIGHT3', 'RIGHT2', 'RIGHT1'
@@ -669,7 +742,7 @@ class ControlEnvWrapper():
 
   def __init__(self, control_name: str, full_action_set: Optional[bool] = True):
     # Disable randomized sticky actions to reduce variance in evaluation.
-    self._env = gym_lib.create_gym_environment(control_name)
+    self._env = create_gym_environment(control_name)
     # atari_lib.create_atari_environment( # TODO: UPDATE
         # control_name, sticky_actions=False)
     self.control_name = control_name
@@ -703,11 +776,12 @@ class ControlEnvWrapper():
   def step(self, action: int) -> Tuple[np.ndarray, float, bool, Any]:
     """Step environment and return observation, reward, done, info."""
     if self.full_action_set:
-      # atari_py library expects limited action set, so convert to limited.
       action = FULL_ACTION_TO_LIMITED_ACTION[self.control_name][action]
     
     real_action = self.continuizer(action)
-    obs, rew, done, info = self._env.step(action) # TODO just make sure we are passing the correct action
+    obs_, rew, done, info = self._env.step(action) # TODO just make sure we are passing the correct action
+    img = self._env.render()
+    obs = convert_render(img)
     obs = _process_observation(obs)
     return obs, rew, done, info
 
@@ -1242,6 +1316,7 @@ def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
 
     # Collect step results and stack as a batch.
     step_results = [env.step(act) for env, act in zip(envs, actions)]
+    # TODO convert to image
     obs_list = [result[0] for result in step_results]
     obs = tree_util.tree_map(lambda *arr: np.stack(arr, axis=0), *obs_list)
     rew = np.stack([result[1] for result in step_results])
@@ -1256,7 +1331,6 @@ def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
     if np.all(done):
       break
   return rew_sum, frames, rng
-
 
 # Select the first game from evaluation config. Feel free to change.
 game_name = 'Breakout'  # @param
