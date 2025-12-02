@@ -64,6 +64,37 @@ def convert_render(img):
   # returns the 84 x 84 x 1 image :)
   return gray_img
 
+class GymPreprocessing(object):
+  """A Wrapper class around Gym environments."""
+
+  def __init__(self, environment, use_legacy_gym=False):
+    self.environment = environment
+    self._use_legacy_gym = use_legacy_gym
+    self.game_over = False
+
+  @property
+  def observation_space(self):
+    return self.environment.observation_space
+
+  @property
+  def action_space(self):
+    return self.environment.action_space
+
+  @property
+  def reward_range(self):
+    return self.environment.reward_range
+
+  @property
+  def metadata(self):
+    return self.environment.metadata
+
+  def reset(self):
+    if self._use_legacy_gym:
+      return self.environment.reset()
+
+    obs, _ = self.environment.reset()
+    return obs
+
 def create_gym_environment(
     environment_name=None,
     # version='v0',
@@ -92,23 +123,7 @@ def create_gym_environment(
     version = "v0"
 
   full_game_name = '{}-{}'.format(environment_name, version)
-  # if use_legacy_gym:
-  #   env = legacy_gym.make(full_game_name)
-  #   if use_ppo_preprocessing:
-  #     env = legacy_gym.wrappers.ClipAction(env)
-  #     env = legacy_gym.wrappers.NormalizeObservation(env)
-  #     env = legacy_gym.wrappers.TransformObservation(
-  #         env, lambda obs: np.clip(obs, -10, 10)
-  #     )
-  #     env = legacy_gym.wrappers.NormalizeReward(env)
-  #     env = legacy_gym.wrappers.TransformReward(
-  #         env, lambda reward: np.clip(reward, -10, 10)
-  #     )
-  # else:
   env = gymnasium.make(full_game_name, render_mode="rgb_array")
-  # Strip out the TimeLimit wrapper from Gym, which caps us at 200 steps.
-  # if isinstance(env, TimeLimit):
-    # env = env.env
   # Wrap the returned environment in a class which conforms to the API expected
   # by Dopamine.
   env = GymPreprocessing(env, use_legacy_gym=use_legacy_gym)
@@ -703,13 +718,13 @@ CONTROL_RETURN_RANGE = [
   -20, 100
 ]
 
-_FULL_ACTION_SET = [
+_FULL_ACTION_SETcont = [
   'LEFT9', 'LEFT8', 'LEFT7', 'LEFT6', 'LEFT5', 'LEFT4', 'LEFT3', 'LEFT2', 'LEFT1',
   'NOOP',
   'RIGHT9', 'RIGHT8', 'RIGHT7', 'RIGHT6', 'RIGHT5', 'RIGHT4', 'RIGHT3', 'RIGHT2', 'RIGHT1'
 ]
 
-_LIMITED_ACTION_SET = {
+_LIMITED_ACTION_SETcont = {
   'CartPole': [
     'LEFT9', 'LEFT8', 'LEFT7', 'LEFT6', 'LEFT5', 'LEFT4', 'LEFT3', 'LEFT2', 'LEFT1',
     'NOOP',
@@ -723,18 +738,18 @@ _LIMITED_ACTION_SET = {
   ]
 }
 
-LIMITED_ACTION_TO_FULL_ACTION = {
+LIMITED_ACTION_TO_FULL_ACTIONcont = {
     control_name: np.array(
-        [_FULL_ACTION_SET.index(i) for i in _LIMITED_ACTION_SET[control_name]])
+        [_FULL_ACTION_SETcont.index(i) for i in _LIMITED_ACTION_SETcont[control_name]])
     for control_name in CONTROL_NAMES
 }
 
 # An array that Converts an action from a full action set to a game-specific
 # action set (Setting 0=NOOP if no game-specific action exists).
-FULL_ACTION_TO_LIMITED_ACTION = {
-    control_name: np.array([(_LIMITED_ACTION_SET[control_name].index(i)
-                          if i in _LIMITED_ACTION_SET[control_name] else 0)
-                         for i in _FULL_ACTION_SET]) for control_name in CONTROL_NAMES
+FULL_ACTION_TO_LIMITED_ACTIONcont = {
+    control_name: np.array([(_LIMITED_ACTION_SETcont[control_name].index(i)
+                          if i in _LIMITED_ACTION_SETcont[control_name] else 0)
+                         for i in _FULL_ACTION_SETcont]) for control_name in CONTROL_NAMES
 }
 
 class ControlEnvWrapper():
@@ -749,37 +764,85 @@ class ControlEnvWrapper():
     self.full_action_set = full_action_set
 
   @property
-  def observation_space(self) -> gym.Space:
+  def observation_space(self) -> gymnasium.Space:
     return self._env.observation_space
 
   @property
-  def action_space(self) -> gym.Space: # TODO may have to fix this because of discrete vs. continuous
+  def action_space(self) -> gymnasium.Space:
     if self.full_action_set:
-      return gym.spaces.Discrete(len(_FULL_ACTION_SET))
+      return gymnasium.spaces.Discrete(len(_FULL_ACTION_SETcont))
     return self._env.action_space
 
   def reset(self) -> np.ndarray:
     """Reset environment and return observation."""
     return _process_observation(self._env.reset())
 
-  def continuizer(self, action): # makes 
-    if self.control_name == "MountainCar-v0": 
-      pass # TODO
+  def continuizer(self, action):
+    """Convert a limited-action-index into the real env action.
+
+    `action` is expected to be an integer index into the limited action set
+    for this control env (i.e. index into _LIMITED_ACTION_SET_[control_name]).
+    """
+    limited_actions = _LIMITED_ACTION_SETcont[self.control_name]
+    if not (0 <= action < len(limited_actions)):
+      raise ValueError(f"Action index {action} out of range for {self.control_name}")
+
+    act_name = limited_actions[action]
+
+    if self.control_name == "MountainCar-v0":
+      # limited set is ['LEFT1', 'NOOP', 'RIGHT1']
+      if act_name.startswith('LEFT'):
+        return 0
+      if act_name == 'NOOP':
+        return 1
+      if act_name.startswith('RIGHT'):
+        return 2
+      return 1
+
+    # CartPole: gym classic uses discrete {0: push-left, 1: push-right}
     elif self.control_name == "CartPole-v1":
-      pass # TODO
+      if act_name.startswith('LEFT'):
+        return 0
+      if act_name == 'NOOP':
+        # no NOOP on CartPole: treat as no-op as left (or choose whichever you prefer)
+        return 0
+      if act_name.startswith('RIGHT'):
+        return 1
+      return 0
+
+    # Pendulum: continuous torque action in range [-2.0, 2.0]
     elif self.control_name == "Pendulum-v1":
-      pass # TODO
+      # Parse magnitude from names like 'LEFT3' or 'RIGHT7'
+      if act_name == 'NOOP':
+        return np.array([0.0], dtype=np.float32)
+      # extract side and magnitude
+      side = 'NOOP'
+      magnitude = 1
+      if act_name.startswith('LEFT'):
+        side = 'LEFT'
+        magnitude = int(act_name.replace('LEFT', '') or 1)
+      elif act_name.startswith('RIGHT'):
+        side = 'RIGHT'
+        magnitude = int(act_name.replace('RIGHT', '') or 1)
+      # map magnitude 1..9 -> torque magnitude in [2/9, 2.0]
+      max_torque = 2.0
+      # protect against weird magnitudes
+      magnitude = max(1, min(9, magnitude))
+      torque = (magnitude / 9.0) * max_torque
+      if side == 'LEFT':
+        torque = -torque
+      return np.array([torque], dtype=np.float32)
+
     else:
-      print(f"Error: {self.control_name} unsupported.")
-      exit()
+      raise ValueError(f"Error: Game {self.control_name} unsupported.")
 
   def step(self, action: int) -> Tuple[np.ndarray, float, bool, Any]:
     """Step environment and return observation, reward, done, info."""
     if self.full_action_set:
-      action = FULL_ACTION_TO_LIMITED_ACTION[self.control_name][action]
+      action = FULL_ACTION_TO_LIMITED_ACTIONcont[self.control_name][action]
     
     real_action = self.continuizer(action)
-    obs_, rew, done, info = self._env.step(action) # TODO just make sure we are passing the correct action
+    obs_, rew, done, info = self._env.step(real_action)
     img = self._env.render()
     obs = convert_render(img)
     obs = _process_observation(obs)
@@ -1125,6 +1188,19 @@ def model_fn(datapoint, is_training=False):
                conv_dim=256)
   return model(datapoint, is_training)
 
+def model_fn_control(datapoint, is_training=False):
+  model=DecisionTransformer(num_actions=CONTROL_NUM_ACTIONS,
+               num_rewards=CONTROL_NUM_REWARDS,
+               return_range=CONTROL_RETURN_RANGE,
+               d_model=1280,
+               num_layers=10,
+               dropout_rate=0.1,
+               predict_reward=True,
+               single_return_token=True,
+               conv_dim=256)
+
+  return model(datapoint, is_training)
+
 model_fn = hk.transform_with_state(model_fn)
 
 @jax.jit
@@ -1138,6 +1214,25 @@ def optimal_action(rng, inputs):
             inputs=inputs,
             logits_fn=logits_fn,
             return_range = ATARI_RETURN_RANGE,
+            single_return_token = True,
+            opt_weight = 0,
+            num_samples = 128,
+            action_temperature = 1.0,
+            return_temperature = 0.75,
+            action_top_percentile = 50,
+            return_top_percentile = None)()
+
+@jax.jit
+def control_optimal_action(rng, inputs):
+  logits_fn = lambda rng, inputs: model_fn.apply(
+        model_params, model_state, rng, inputs, is_training=False)[0]
+
+  return functools.partial(
+            DecisionTransformer.optimal_action,
+            rng=rng,
+            inputs=inputs,
+            logits_fn=logits_fn,
+            return_range = CONTROL_RETURN_RANGE,
             single_return_token = True,
             opt_weight = 0,
             num_samples = 128,
@@ -1290,6 +1385,122 @@ def build_env_fn(game_name):
 
   return env_fn
 
+class ControlSequenceEnvironmentWrapper(WrappedGymEnv):
+  """Environment wrapper for supporting sequential model inference.
+  """
+
+  def __init__(self,
+               env,
+               num_stack_frames: int = 1):
+    self._env = env
+    self.num_stack_frames = num_stack_frames
+    if self.is_goal_conditioned:
+      # If env is goal-conditioned, we want to track goal history.
+      self.goal_stack = collections.deque([], maxlen=self.num_stack_frames)
+    self.obs_stack = collections.deque([], maxlen=self.num_stack_frames)
+    self.act_stack = collections.deque([], maxlen=self.num_stack_frames)
+    self.rew_stack = collections.deque([], maxlen=self.num_stack_frames)
+    self.done_stack = collections.deque([], maxlen=self.num_stack_frames)
+    self.info_stack = collections.deque([], maxlen=self.num_stack_frames)
+
+  @property
+  def observation_space(self):
+    """Constructs observation space."""
+    parent_obs_space = self._env.observation_space
+    act_space = self.action_space
+    episode_history = {
+        'observations': gymnasium.spaces.Box(
+            np.stack([parent_obs_space.low] * self.num_stack_frames, axis=0),
+            np.stack([parent_obs_space.high] * self.num_stack_frames, axis=0),
+            dtype=parent_obs_space.dtype),
+        'actions': gymnasium.spaces.Box(
+            0, act_space.n, [self.num_stack_frames], dtype=act_space.dtype),
+        'rewards': gymnasium.spaces.Box(-np.inf, np.inf, [self.num_stack_frames])
+    }
+    if self.is_goal_conditioned:
+      goal_shape = np.shape(self._env.goal)  # pytype: disable=attribute-error
+      episode_history['returns-to-go'] = gymnasium.spaces.Box(
+          -np.inf, np.inf, [self.num_stack_frames] + goal_shape)
+    return gymnasium.spaces.Dict(**episode_history)
+
+  @property
+  def is_goal_conditioned(self):
+    return False
+
+  def pad_current_episode(self, obs, n):
+    # Prepad current episode with n steps.
+    for _ in range(n):
+      if self.is_goal_conditioned:
+        self.goal_stack.append(self._env.goal)  # pytype: disable=attribute-error
+      self.obs_stack.append(np.zeros_like(obs))
+      self.act_stack.append(0)
+      self.rew_stack.append(0)
+      self.done_stack.append(1)
+      self.info_stack.append(None)
+
+  def _get_observation(self):
+     
+    episode_history = {
+        'observations': np.stack(self.obs_stack, axis=0),
+        'actions': np.stack(self.act_stack, axis=0),
+        'rewards': np.stack(self.rew_stack, axis=0),
+    }
+    if self.is_goal_conditioned:
+      episode_history['returns-to-go'] = np.stack(self.goal_stack, axis=0)
+    return episode_history
+
+  def reset(self):
+    """Resets env and returns new observation."""
+    obs = self._env.reset()
+    # Create a N-1 "done" past frames.
+    self.pad_current_episode(obs, self.num_stack_frames-1)
+    # Create current frame (but with placeholder actions and rewards).
+    if self.is_goal_conditioned:
+      self.goal_stack.append(self._env.goal)
+    self.obs_stack.append(obs)
+    self.act_stack.append(0)
+    self.rew_stack.append(0)
+    self.done_stack.append(0)
+    self.info_stack.append(None)
+    return self._get_observation()
+
+  def step(self, action: np.ndarray):
+    """Replaces env observation with fixed length observation history."""
+    # Update applied action to the previous timestep.
+    self.act_stack[-1] = action
+    obs, rew, done, info = self._env.step(action)
+    self.rew_stack[-1] = rew
+    # Update frame stack.
+    self.obs_stack.append(obs)
+    self.act_stack.append(0)  # Append unknown action to current timestep.
+    self.rew_stack.append(0)
+    self.info_stack.append(info)
+    if self.is_goal_conditioned:
+      self.goal_stack.append(self._env.goal)
+    if done:
+      if self.is_goal_conditioned:
+        # rewrite the observations to reflect hindsight RtG conditioning.
+        self.replace_goals_with_hindsight()
+    return self._get_observation(), rew, done, info
+
+  def replace_goals_with_hindsight(self):
+    # We perform this after rew_stack has been updated.
+    assert self.is_goal_conditioned
+    window_return = sum(list(self.rew_stack))
+    for r in self.rew_stack:
+      self.goal_stack.append(window_return)
+      window_return -= r
+
+def build_control_env_fn(control_name):
+  """Returns env constructor fn."""
+
+  def env_fn():
+    env = ControlEnvWrapper(control_name)
+    env = ControlSequenceEnvironmentWrapper(env, 4)
+    return env
+
+  return env_fn
+
 # BATCH ROLLOUT
 # @title Environment rollout
 
@@ -1316,7 +1527,6 @@ def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
 
     # Collect step results and stack as a batch.
     step_results = [env.step(act) for env, act in zip(envs, actions)]
-    # TODO convert to image
     obs_list = [result[0] for result in step_results]
     obs = tree_util.tree_map(lambda *arr: np.stack(arr, axis=0), *obs_list)
     rew = np.stack([result[1] for result in step_results])
@@ -1332,6 +1542,7 @@ def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
       break
   return rew_sum, frames, rng
 
+"""
 # Select the first game from evaluation config. Feel free to change.
 game_name = 'Breakout'  # @param
 num_envs = 4  # @param
@@ -1347,15 +1558,24 @@ rew_sum, frames, rng = _batch_rollout(
 print('scores:', rew_sum, 'average score:', np.mean(rew_sum))
 
 print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
+"""
 
-# PLOT SCORES
-# @title Plot scores
+for control_name in ['CartPole', 'MountainCar', 'Pendulum']:
+  num_envs = 4
+  env_fn = build_control_env_fn(control_name)
+  env_batch = [env_fn() for i in range(num_envs)]
+  rng = jax.random.PRNGKey(0)
 
+  rew_sum, frames, rng = _batch_rollout(
+    rng, env_batch, control_optimal_action, num_steps=5000, log_interval=100)
+  
+  print('scores:', rew_sum, 'average score:', np.mean(rew_sum))
+  print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
 
-plt.plot(rew_sum, 'o')
-plt.title(f'Game scores for {game_name}')
-plt.xlabel('trial index')
-plt.ylabel('score')
+  plt.plot(rew_sum, 'o')
+  plt.title(f'Scores for {control_name}')
+  plt.xlabel('trial index')
+  plt.ylabel('score')
 
-# Save the plot as an image file
-plt.savefig(f"{game_name}_scores.png", dpi=300, bbox_inches='tight')
+  # Save the plot as an image file
+  plt.savefig(f"{control_name}_scores.png", dpi=300, bbox_inches='tight')
