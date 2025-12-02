@@ -47,15 +47,17 @@ print('Number of model parameters: %.2e' % model_param_count)
 # PREPROCESSING
 def convert_render(img):
   gray_img = (img[:,:,0] + img[:,:,1] + img[:,:,2]) / 3 # averaging for RGB -> grayscale
-  # now the image is a 400 x 600 grayscale
+  # now the image is a 400 x 600 grayscale or 500 x 500 grayscale
+  n = int(img.shape[0]/100)
+  m = int(img.shape[1]/100)
 
   conv_layer = tf.keras.layers.Conv2D(
     filters=1,          # Number of output filters/channels
-    kernel_size=(4, 6),  # Size of the convolution kernel (e.g., 3x3)
-    strides=(4, 6)      # How far the kernel moves at each step
+    kernel_size=(n, m),  # Kernel makes it 100 x 100
+    strides=(n, m)      # How far the kernel moves at each step
   )
   tens = tf.convert_to_tensor(gray_img)
-  tens1 = tf.reshape(tens, (1, 400, 600, 1))
+  tens1 = tf.reshape(tens, (1, img.shape[0], img.shape[1], 1))
   resized = conv_layer(tens1).numpy() # compressed
 
   gray_img = resized[0, 8:92, 8:92, :] # center cropped
@@ -717,7 +719,7 @@ class DecisionTransformer(hk.Module):
 CONTROL_NAMES = [
   'CartPole', 'MountainCar', 'Pendulum'
 ]
-CONTROL_OBSERVATION_SHAPE = (84, 84, 1) # is this the size that the render function outputs? TODO
+CONTROL_OBSERVATION_SHAPE = (84, 84, 1) 
 CONTROL_NUM_ACTIONS = 21 # maximum number of actions
 CONTROL_NUM_REWARDS = 4
 CONTROL_RETURN_RANGE = [
@@ -764,7 +766,7 @@ class ControlEnvWrapper():
   def __init__(self, control_name: str, full_action_set: Optional[bool] = True):
     # Disable randomized sticky actions to reduce variance in evaluation.
     self._env = create_gym_environment(control_name)
-    # atari_lib.create_atari_environment( # TODO: UPDATE
+    # atari_lib.create_atari_environment( 
         # control_name, sticky_actions=False)
     self.control_name = control_name
     self.full_action_set = full_action_set
@@ -855,6 +857,7 @@ class ControlEnvWrapper():
     real_action = self.continuizer(action)
     obs_, rew, done, info, junk = self._env.step(real_action)
     img = self._env.render()
+    if self.control_name == "Pendulum": rew = np.ceil(rew)
     obs = convert_render(img)
     obs = _process_observation(obs)
     return obs, rew, done, info
@@ -1538,10 +1541,10 @@ def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
     frames.append(
         np.concatenate([o['observations'][-1, ...] for o in obs_list], axis=1))
     done_prev = done
-    print(f"Step {t+1} checkpoint 1")
+    # print(f"Step {t+1} checkpoint 1")
 
     actions, rng = policy_fn(rng, obs)
-    print(f"Step {t+1} checkpoint 2")
+    # print(f"Step {t+1} checkpoint 2")
 
     # Collect step results and stack as a batch.
     step_results = [env.step(act) for env, act in zip(envs, actions)]
@@ -1555,7 +1558,6 @@ def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
     rew_sum += rew
     if log_interval and t % log_interval == 0:
       print('step: %d done: %s reward: %s' % (t, done, rew_sum))
-    # Don't continue if all environments are done.
     if np.all(done):
       break
   return rew_sum, frames, rng
@@ -1578,8 +1580,12 @@ print('scores:', rew_sum, 'average score:', np.mean(rew_sum))
 print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
 """
 
-for control_name in ['CartPole', 'MountainCar', 'Pendulum']:
-  num_envs = 4
+for control_name in [
+  'CartPole', 
+  'MountainCar', 
+  'Pendulum'
+  ]:
+  num_envs = 10
   # print("Checkpoint 1")
   env_fn = build_control_env_fn(control_name)
   # print("Checkpoint 2")
@@ -1588,7 +1594,7 @@ for control_name in ['CartPole', 'MountainCar', 'Pendulum']:
   rng = jax.random.PRNGKey(0)
 
   rew_sum, frames, rng = _batch_rollout(
-    rng, env_batch, control_optimal_action, num_steps=5000, log_interval=1)
+    rng, env_batch, control_optimal_action, num_steps=200, log_interval=1) # 200 is a good time limit for control tasks
   
   print('scores:', rew_sum, 'average score:', np.mean(rew_sum))
   print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
