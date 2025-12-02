@@ -88,12 +88,18 @@ class GymPreprocessing(object):
   def metadata(self):
     return self.environment.metadata
 
+  def render(self):
+    return self.environment.render()
+
   def reset(self):
     if self._use_legacy_gym:
       return self.environment.reset()
 
     obs, _ = self.environment.reset()
     return obs
+
+  def step(self, act):
+    return self.environment.step(act)
 
 def create_gym_environment(
     environment_name=None,
@@ -775,7 +781,12 @@ class ControlEnvWrapper():
 
   def reset(self) -> np.ndarray:
     """Reset environment and return observation."""
-    return _process_observation(self._env.reset())
+    # _process_observation(self._env.reset())
+    self._env.reset()
+    img = self._env.render()
+    obs = convert_render(img)
+    obs = _process_observation(obs)
+    return obs
 
   def continuizer(self, action):
     """Convert a limited-action-index into the real env action.
@@ -789,7 +800,7 @@ class ControlEnvWrapper():
 
     act_name = limited_actions[action]
 
-    if self.control_name == "MountainCar-v0":
+    if self.control_name == "MountainCar":
       # limited set is ['LEFT1', 'NOOP', 'RIGHT1']
       if act_name.startswith('LEFT'):
         return 0
@@ -800,7 +811,7 @@ class ControlEnvWrapper():
       return 1
 
     # CartPole: gym classic uses discrete {0: push-left, 1: push-right}
-    elif self.control_name == "CartPole-v1":
+    elif self.control_name == "CartPole":
       if act_name.startswith('LEFT'):
         return 0
       if act_name == 'NOOP':
@@ -811,7 +822,7 @@ class ControlEnvWrapper():
       return 0
 
     # Pendulum: continuous torque action in range [-2.0, 2.0]
-    elif self.control_name == "Pendulum-v1":
+    elif self.control_name == "Pendulum":
       # Parse magnitude from names like 'LEFT3' or 'RIGHT7'
       if act_name == 'NOOP':
         return np.array([0.0], dtype=np.float32)
@@ -842,7 +853,7 @@ class ControlEnvWrapper():
       action = FULL_ACTION_TO_LIMITED_ACTIONcont[self.control_name][action]
     
     real_action = self.continuizer(action)
-    obs_, rew, done, info = self._env.step(real_action)
+    obs_, rew, done, info, junk = self._env.step(real_action)
     img = self._env.render()
     obs = convert_render(img)
     obs = _process_observation(obs)
@@ -923,7 +934,6 @@ _LIMITED_ACTION_SET = {
     ],
     'BeamRider': [
         'NOOP', 'FIRE', 'UP', 'RIGHT', 'LEFT', 'UPRIGHT', 'UPLEFT', 'RIGHTFIRE',
-        'LEFTFIRE'
     ],
     'Berzerk': [
         'NOOP', 'FIRE', 'UP', 'RIGHT', 'LEFT', 'DOWN', 'UPRIGHT', 'UPLEFT',
@@ -1227,6 +1237,8 @@ def control_optimal_action(rng, inputs):
   logits_fn = lambda rng, inputs: model_fn.apply(
         model_params, model_state, rng, inputs, is_training=False)[0]
 
+  # print("logits_fn called")
+
   return functools.partial(
             DecisionTransformer.optimal_action,
             rng=rng,
@@ -1507,23 +1519,29 @@ def build_control_env_fn(control_name):
 
 # You can add your own logic and any other collection code here.
 def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
+  print("Batch rollout called")
   """Roll out a batch of environments under a given policy function."""
   # observations are dictionaries. Merge into single dictionary with batched
   # observations.
   obs_list = [env.reset() for env in envs]
+  # print("Environments reset")
   num_batch = len(envs)
   obs = tree_util.tree_map(lambda *arr: np.stack(arr, axis=0), *obs_list)
+  # print("Observations retrieved")
   ret = np.zeros([num_batch, 8])
   done = np.zeros(num_batch, dtype=np.int32)
   rew_sum = np.zeros(num_batch, dtype=np.float32)
   frames = []
+  # print("Starting steps!")
   for t in range(num_steps):
     # Collect observations
     frames.append(
         np.concatenate([o['observations'][-1, ...] for o in obs_list], axis=1))
     done_prev = done
+    print(f"Step {t+1} checkpoint 1")
 
     actions, rng = policy_fn(rng, obs)
+    print(f"Step {t+1} checkpoint 2")
 
     # Collect step results and stack as a batch.
     step_results = [env.step(act) for env, act in zip(envs, actions)]
@@ -1562,12 +1580,15 @@ print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.ma
 
 for control_name in ['CartPole', 'MountainCar', 'Pendulum']:
   num_envs = 4
+  # print("Checkpoint 1")
   env_fn = build_control_env_fn(control_name)
+  # print("Checkpoint 2")
   env_batch = [env_fn() for i in range(num_envs)]
+  # print("Checkpoint 3")
   rng = jax.random.PRNGKey(0)
 
   rew_sum, frames, rng = _batch_rollout(
-    rng, env_batch, control_optimal_action, num_steps=5000, log_interval=100)
+    rng, env_batch, control_optimal_action, num_steps=5000, log_interval=1)
   
   print('scores:', rew_sum, 'average score:', np.mean(rew_sum))
   print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
