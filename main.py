@@ -45,31 +45,21 @@ model_params, model_state = pickle.load(open('checkpoint_38274228.pkl', 'rb'))
 model_param_count = sum(x.size for x in jax.tree_util.tree_leaves(model_params))
 print('Number of model parameters: %.2e' % model_param_count)
 
-# PREPROCESSING
+#---------------------------------
+#------ PREPROCESSING (OUR WORK)
+#---------------------------------
 def convert_render(img):
   gray_img = (0.289 * img[:,:,0] + 0.587 * img[:,:,1] + 0.214 * img[:,:,2]) # averaging for RGB -> grayscale using CCIR 601
   gray_img = cv2.resize(gray_img, (84, 84), interpolation=cv2.INTER_AREA)
   # now the image is a 400 x 600 grayscale or 500 x 500 grayscale
-  # n = int(img.shape[0]/100)
-  # m = int(img.shape[1]/100)
-
-  # conv_layer = tf.keras.layers.Conv2D(
-  #   filters=1,          # Number of output filters/channels
-  #   kernel_size=(n, m),  # Kernel makes it 100 x 100
-  #   strides=(n, m)      # How far the kernel moves at each step
-  # )
-  # tens = tf.convert_to_tensor(gray_img)
-  # tens1 = tf.reshape(tens, (1, img.shape[0], img.shape[1], 1))
-  # resized = conv_layer(tens1).numpy() # compressed
-  
-
-  # gray_img = resized[0, 8:92, 8:92, :] # center cropped
-  # gray_img = cropped_tensor.numpy()
-  # print(np.expand_dims(gray_img, axis=-1).shape)
   gray_img = np.expand_dims(gray_img, axis=-1)
 
   # returns the 84 x 84 x 1 image :)
   return gray_img
+
+#---------------------------------
+#------ PREPROCESSING (OUR WORK, but adapted from dopamine library code)
+#---------------------------------
 
 class GymPreprocessing(object):
   """A Wrapper class around Gym environments."""
@@ -142,10 +132,9 @@ def create_gym_environment(
   env = GymPreprocessing(env, use_legacy_gym=use_legacy_gym)
   return env
 
-# RENDERING
-
-# UTILITIES
-# @title Utilities
+#---------------------------------
+#------ UTILITIES (NOT OUR WORK)
+#---------------------------------
 
 def cross_entropy(logits, labels):
   """Applies sparse cross entropy loss between logits and target labels."""
@@ -319,8 +308,9 @@ def decode_return(ret: jnp.ndarray, ret_range: Tuple[int]) -> jnp.ndarray:
   return ret
 
 
-# TRANSFORMER DEFINITION
-# @title Transformer definition
+#---------------------------------
+#------ TRANSFORMER DEFINITION (NOT OUR WORK)
+#---------------------------------
 
 
 class DenseBlock(hk.Module):
@@ -444,8 +434,9 @@ class Transformer(hk.Module):
 
     return h
 
-# MODEL DEFINITION
-# @title Model definition
+#---------------------------------
+#------ MODEL DEFINITION (NOT OUR WORK)
+#---------------------------------
 
 
 class DecisionTransformer(hk.Module):
@@ -720,7 +711,10 @@ class DecisionTransformer(hk.Module):
         top_percentile=action_top_percentile)
     return act_sample, rng
 
-# CONTROL ENVIRONMENT DEFINITION
+#---------------------------------
+#------ CONTROL ADAPTATION (OUR WORK)
+#---------------------------------
+
 CONTROL_NAMES = [
   'CartPole', 'MountainCar', 'Pendulum'
 ]
@@ -796,10 +790,8 @@ class ControlEnvWrapper():
     return obs
 
   def continuizer(self, action):
-    """Convert a limited-action-index into the real env action.
-
-    `action` is expected to be an integer index into the limited action set
-    for this control env (i.e. index into _LIMITED_ACTION_SET_[control_name]).
+    """
+    Convert actions from discrete (model) to continuous (gym) to actually push through to gym env
     """
     limited_actions = _LIMITED_ACTION_SETcont[self.control_name]
     if not (0 <= action < len(limited_actions)):
@@ -817,7 +809,7 @@ class ControlEnvWrapper():
         return 2
       return 1
 
-    # CartPole: gym classic uses discrete {0: push-left, 1: push-right}
+    # CartPole: gym uses discrete {0: push-left, 1: push-right}
     elif self.control_name == "CartPole":
       if act_name.startswith('LEFT'):
         return 0
@@ -833,7 +825,7 @@ class ControlEnvWrapper():
       # Parse magnitude from names like 'LEFT3' or 'RIGHT7'
       if act_name == 'NOOP':
         return np.array([0.0], dtype=np.float32)
-      # extract side and magnitude
+      # extract direction and magnitude
       side = 'NOOP'
       magnitude = 1
       if act_name.startswith('LEFT'):
@@ -842,11 +834,8 @@ class ControlEnvWrapper():
       elif act_name.startswith('RIGHT'):
         side = 'RIGHT'
         magnitude = int(act_name.replace('RIGHT', '') or 1)
-      # map magnitude 1..9 -> torque magnitude in [2/9, 2.0]
-      max_torque = 2.0
-      # protect against weird magnitudes
       magnitude = max(1, min(9, magnitude))
-      torque = (magnitude / 9.0) * max_torque
+      torque = (magnitude / 9.0) * 2.0
       if side == 'LEFT':
         torque = -torque
       return np.array([torque], dtype=np.float32)
@@ -867,8 +856,9 @@ class ControlEnvWrapper():
     obs = _process_observation(obs)
     return obs, rew, done, info
 
-# ATARI ENVIRONMNET DEFINITION
-# @title Atari environment definition
+#---------------------------------
+#------ ATARI ORIGINAL (NOT OUR WORK; this code is unused for our tests and is a relic)
+#---------------------------------
 
 GAME_NAMES = [
     'AirRaid', 'Alien', 'Amidar', 'Assault', 'Asterix', 'Asteroids', 'Atlantis',
@@ -1191,8 +1181,9 @@ class AtariEnvWrapper():
     obs = _process_observation(obs)
     return obs, rew, done, info
 
-# BUILD MODEL FUNCTION
-# @title Build model function
+#---------------------------------
+#------ BUILD MODEL FUNCTION (NOT OUR WORK, relic)
+#---------------------------------
 
 def model_fn(datapoint, is_training=False):
   model = DecisionTransformer(num_actions = ATARI_NUM_ACTIONS,
@@ -1261,8 +1252,9 @@ def control_optimal_action(rng, inputs):
             action_top_percentile = 50,
             return_top_percentile = None)()
 
-# TEST MODEL FUNCTION
-# @title Test model function
+#---------------------------------
+#------ TEST (NOT OUR WORK)
+#---------------------------------
 
 rng = jax.random.PRNGKey(0)
 
@@ -1278,8 +1270,9 @@ init_params, init_state = model_fn.init(rng, dummy_datapoint)
 result, rng = model_fn.apply(init_params, init_state, rng, dummy_datapoint, is_training=False)
 print('Result contains: ', result.keys())
 
-# CREATE ENVIRONMENT WRAPPERS
-# @title Create environment wrappers
+#---------------------------------
+#------ ENVIRONMENT WRAPPERS (NOT OUR WORK)
+#---------------------------------
 
 class WrappedGymEnv:
 
@@ -1405,6 +1398,10 @@ def build_env_fn(game_name):
 
   return env_fn
 
+#---------------------------------
+#------ ENVIRONMENT WRAPPERS (OUR WORK, ADAPTED)
+#---------------------------------
+
 class ControlSequenceEnvironmentWrapper(WrappedGymEnv):
   """Environment wrapper for supporting sequential model inference.
   """
@@ -1521,11 +1518,10 @@ def build_control_env_fn(control_name):
 
   return env_fn
 
-# BATCH ROLLOUT
-# @title Environment rollout
+#---------------------------------
+#------ BATCH ROLLOUT (NOT OUR WORK, BUT USED BY US)
+#---------------------------------
 
-
-# You can add your own logic and any other collection code here.
 def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
   print("Batch rollout called")
   """Roll out a batch of environments under a given policy function."""
@@ -1567,22 +1563,10 @@ def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
       break
   return rew_sum, frames, rng
 
-"""
-# Select the first game from evaluation config. Feel free to change.
-game_name = 'Breakout'  # @param
-num_envs = 4  # @param
-env_fn = build_env_fn(game_name)
-# Create a batch of environments to evaluate.
-env_batch = [env_fn() for i in range(num_envs)]
 
-rng = jax.random.PRNGKey(0)
-rew_sum, frames, rng = _batch_rollout(
-    rng, env_batch, optimal_action, num_steps=5000, log_interval=100)
-
-print('scores:', rew_sum, 'average score:', np.mean(rew_sum))
-
-print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
-"""
+#---------------------------------
+#------ TEST LOOP (OUR WORK, ADAPTED)
+#---------------------------------
 
 for control_name in [
   'CartPole', 
@@ -1603,10 +1587,3 @@ for control_name in [
   print('scores:', list(rew_sum), 'average score:', np.mean(rew_sum))
   print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
 
-  # plt.plot(rew_sum, 'o')
-  # plt.title(f'Scores for {control_name}')
-  # plt.xlabel('trial index')
-  # plt.ylabel('score')
-
-  # # Save the plot as an image file
-  # plt.savefig(f"{control_name}_scores.png", dpi=300, bbox_inches='tight')
