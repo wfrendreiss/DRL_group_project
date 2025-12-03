@@ -626,12 +626,70 @@ class DecisionTransformer(hk.Module):
       obj_pairs.append((rew_logits, rew_target))
     return obj_pairs
 
-  def sequence_loss(self, inputs: Mapping[str, jnp.ndarray],
+# TODO: Right now the only the actions 8 and 18 are rewarded due to the ppo_dataset only containing actions 0 and 1
+# In finetune.py we mapped 0 to LEFT1 (which corresponds to action 8) and 1 to RIGHT1 (which corresponds to action 18)
+# So the model only gets feedback when it accidentally lands on either 8 or 18, so I think instead of one-hot encoding
+# we instead use a soft encoding where each of the LEFTS (from LEFT1 to LEFT9) its ground truth logit set to 1/9, so as
+# long as the model picks any of the LEFT actions (regardless of which one), it is given feedback through the loss
+
+"""
+def sequence_loss(logits, action_target):
+    """
+    logits: [B, T, NUM_ACTIONS]
+    action_target: [B, T]  (int indices)
+    """
+
+    B, T, num_actions = logits.shape
+
+    is_cartpole = jnp.all((action_target == 8) | (action_target == 18))
+
+    def cartpole_soft_labels(actions):
+        LEFT_BINS  = jnp.arange(0, 9)   # LEFT9..LEFT1
+        RIGHT_BINS = jnp.arange(10, 19) # RIGHT1..RIGHT9
+
+        def one_label(a):
+            label = jnp.zeros(num_actions)
+
+            # LEFT: action 8
+            label = jax.lax.cond(
+                a == 8,
+                lambda _: label.at[LEFT_BINS].set(1/9),
+                lambda _: label,
+                operand=None
+            )
+
+            # RIGHT: action 18
+            label = jax.lax.cond(
+                a == 18,
+                lambda _: label.at[RIGHT_BINS].set(1/9),
+                lambda _: label,
+                operand=None
+            )
+
+            return label
+
+        return jax.vmap(jax.vmap(one_label))(actions)
+
+    labels = jax.lax.cond(
+        is_cartpole,
+        lambda _: cartpole_soft_labels(action_target),
+        lambda _: jax.nn.one_hot(action_target, num_actions),
+        operand=None
+    )
+
+    log_probs = jax.nn.log_softmax(logits)
+    loss = -jnp.sum(labels * log_probs, axis=-1)
+
+    return jnp.mean(loss)
+"""
+
+def sequence_loss(self, inputs: Mapping[str, jnp.ndarray],
                     model_outputs: Mapping[str, jnp.ndarray]) -> jnp.ndarray:
     """Compute the loss on data wrt model outputs."""
     obj_pairs = self._objective_pairs(inputs, model_outputs)
     obj = [cross_entropy(logits, target) for logits, target in obj_pairs]
     return sum(obj) / len(obj)
+
 
   def sequence_accuracy(
       self, inputs: Mapping[str, jnp.ndarray],
@@ -1526,6 +1584,7 @@ def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
   """Roll out a batch of environments under a given policy function."""
   # observations are dictionaries. Merge into single dictionary with batched
   # observations.
+  all_actions = []
   obs_list = [env.reset() for env in envs]
   # print("Environments reset")
   num_batch = len(envs)
@@ -1545,7 +1604,7 @@ def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
 
     actions, rng = policy_fn(rng, obs)
     # print(f"Step {t+1} checkpoint 2")
-
+    all_actions.append(np.array(actions))
     # Collect step results and stack as a batch.
     step_results = [env.step(act) for env, act in zip(envs, actions)]
     obs_list = [result[0] for result in step_results]
@@ -1560,6 +1619,9 @@ def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
       print('step: %d done: %s reward: %s' % (t, done, rew_sum))
     if np.all(done):
       break
+  print("\n=== FULL ACTION SEQUENCE ===")
+  for t, acts in enumerate(all_actions):
+    print(f"t={t:03d}: {acts}")
   return rew_sum, frames, rng
 
 """

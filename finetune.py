@@ -24,37 +24,44 @@ from main import DecisionTransformer   # modify if path differs
 # 1. Load offline trajectories
 # ------------------------------
 def load_offline_trajectories(dataset_dir="ppo_datasets"):
-    """Load all trajectory datasets from the specified directory."""
     trajectories = []
     dataset_files = glob.glob(os.path.join(dataset_dir, "*.pkl"))
-    
+
     if not dataset_files:
         raise ValueError(f"No .pkl files found in {dataset_dir}/")
-    
+
     print(f"Loading trajectories from {len(dataset_files)} dataset files...")
-    
+
     for dataset_file in sorted(dataset_files):
         print(f"  Loading {dataset_file}...")
         with open(dataset_file, "rb") as f:
             dataset = pickle.load(f)
-            # If dataset is a list, extend; if it's a single trajectory dict, append
-            if isinstance(dataset, list):
-                trajectories.extend(dataset)
-                print(f"    Added {len(dataset)} trajectories")
-            else:
-                trajectories.append(dataset)
-                print(f"    Added 1 trajectory")
-    
+
+        if isinstance(dataset, list):
+            traj_list = dataset
+        else:
+            traj_list = [dataset]
+
+        print(f"    Added {len(traj_list)} trajectories")
+
+        for traj in traj_list:
+            gym_actions = np.array(traj["actions"], dtype=np.int32)
+            mgdt_actions = np.where(gym_actions == 0, 8, 18).astype(np.int32)
+            traj["actions"] = mgdt_actions
+
+            print("      Mapped actions (first 10):", traj["actions"][:10])
+            trajectories.append(traj)
+
     print(f"\nTotal trajectories loaded: {len(trajectories)}")
+
     if len(trajectories) > 0:
         sample_traj = trajectories[0]
         print(f"Sample trajectory keys: {sample_traj.keys()}")
-        if "actions" in sample_traj:
-            print(f"Sample trajectory length: {len(sample_traj['actions'])}")
-    
+        print(f"Sample trajectory length: {len(sample_traj['actions'])}")
+
     return trajectories
 
-# Load all offline trajectories
+
 trajectories = load_offline_trajectories()
 
 
@@ -183,10 +190,27 @@ def train_step(params, state, opt_state, rng, batch):
     return params, new_state, opt_state, loss
 
 def mgdt_action(rng, obs_batch):
-    outputs = model.apply(model_params, model_state, rng, obs_batch)
+    # Extract structure
+    B, T = obs_batch["actions"].shape
+
+    # Create artificial RTG = 200 for every timestep
+    rtg = jnp.full((B, T), 200, dtype=jnp.int32)
+
+    full_batch = {
+        "observations": obs_batch["observations"],
+        "actions": obs_batch["actions"],
+        "rewards": obs_batch["rewards"],
+        "returns-to-go": rtg,
+    }
+
+    outputs, _ = model_fn.apply(
+        model_params, model_state, rng, full_batch, is_training=False
+    )
+
     logits = outputs["action_logits"]
     actions = jnp.argmax(logits, axis=-1)
-    return np.array(actions), rng
+
+    return np.array(actions[:, -1]), rng
 
 
 
@@ -222,7 +246,7 @@ def fine_tune(trajectories, steps=100_000):
             # Run evaluation rollout
             print("EVALUATING ROLLOUT")
             env_fn = build_control_env_fn("CartPole")
-            env_batch = [env_fn() for _ in range(10)]
+            env_batch = [env_fn() for _ in range(1)]
 
             rew_sum, frames, rng = _batch_rollout(
                 rng, env_batch, mgdt_action, num_steps=200
