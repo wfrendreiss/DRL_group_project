@@ -32,8 +32,8 @@ import optax
 
 # Load model checkpoint
 # @title Load model checkpoint
-
-model_params, model_state = pickle.load(open('checkpoint_38274228.pkl', 'rb'))
+if __name__ == "__main__":
+    model_params, model_state = pickle.load(open('checkpoint_38274228.pkl', 'rb'))
 
 
 # file_path = 'gs://rl-infra-public/multi_game_dt/checkpoint_38274228.pkl'
@@ -41,8 +41,8 @@ model_params, model_state = pickle.load(open('checkpoint_38274228.pkl', 'rb'))
 # with tf.io.gfile.GFile(file_path, 'rb') as f:
 #  model_params, model_state = pickle.load(f)
 
-model_param_count = sum(x.size for x in jax.tree_util.tree_leaves(model_params))
-print('Number of model parameters: %.2e' % model_param_count)
+    model_param_count = sum(x.size for x in jax.tree_util.tree_leaves(model_params))
+    print('Number of model parameters: %.2e' % model_param_count)
 
 # PREPROCESSING
 def convert_render(img):
@@ -1258,20 +1258,20 @@ def control_optimal_action(rng, inputs):
 
 # TEST MODEL FUNCTION
 # @title Test model function
+if __name__ == "__main__":
+    rng = jax.random.PRNGKey(0)
 
-rng = jax.random.PRNGKey(0)
+    batch_size = 2
+    window_size = 4
+    dummy_datapoint = {'observations': np.zeros((batch_size, window_size,) + ATARI_OBSERVATION_SHAPE),
+        'actions': np.zeros([batch_size, window_size], dtype=np.int32),
+        'rewards': np.zeros([batch_size, window_size], dtype=np.int32),
+        'returns-to-go': np.zeros([batch_size, window_size], dtype=np.int32)}
 
-batch_size = 2
-window_size = 4
-dummy_datapoint = {'observations': np.zeros((batch_size, window_size,) + ATARI_OBSERVATION_SHAPE),
-      'actions': np.zeros([batch_size, window_size], dtype=np.int32),
-      'rewards': np.zeros([batch_size, window_size], dtype=np.int32),
-      'returns-to-go': np.zeros([batch_size, window_size], dtype=np.int32)}
+    init_params, init_state = model_fn.init(rng, dummy_datapoint)
 
-init_params, init_state = model_fn.init(rng, dummy_datapoint)
-
-result, rng = model_fn.apply(init_params, init_state, rng, dummy_datapoint, is_training=False)
-print('Result contains: ', result.keys())
+    result, rng = model_fn.apply(init_params, init_state, rng, dummy_datapoint, is_training=False)
+    print('Result contains: ', result.keys())
 
 # CREATE ENVIRONMENT WRAPPERS
 # @title Create environment wrappers
@@ -1580,29 +1580,30 @@ print('scores:', rew_sum, 'average score:', np.mean(rew_sum))
 print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
 """
 
-for control_name in [
-  'CartPole', 
-  'MountainCar', 
-  'Pendulum'
-  ]:
-  num_envs = 10
-  # print("Checkpoint 1")
-  env_fn = build_control_env_fn(control_name)
-  # print("Checkpoint 2")
-  env_batch = [env_fn() for i in range(num_envs)]
-  # print("Checkpoint 3")
-  rng = jax.random.PRNGKey(0)
+if __name__ == "__main__":
+    for control_name in [
+        'CartPole', 
+        'MountainCar', 
+        'Pendulum'
+    ]:
+        num_envs = 10
+        # print("Checkpoint 1")
+        env_fn = build_control_env_fn(control_name)
+        # print("Checkpoint 2")
+        env_batch = [env_fn() for i in range(num_envs)]
+        # print("Checkpoint 3")
+        rng = jax.random.PRNGKey(0)
 
-  rew_sum, frames, rng = _batch_rollout(
-    rng, env_batch, control_optimal_action, num_steps=200, log_interval=1) # 200 is a good time limit for control tasks
+        rew_sum, frames, rng = _batch_rollout(
+            rng, env_batch, control_optimal_action, num_steps=200, log_interval=1) # 200 is a good time limit for control tasks
   
-  print('scores:', rew_sum, 'average score:', np.mean(rew_sum))
-  print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
+        print('scores:', rew_sum, 'average score:', np.mean(rew_sum))
+        print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
 
-  plt.plot(rew_sum, 'o')
-  plt.title(f'Scores for {control_name}')
-  plt.xlabel('trial index')
-  plt.ylabel('score')
+        plt.plot(rew_sum, 'o')
+        plt.title(f'Scores for {control_name}')
+        plt.xlabel('trial index')
+        plt.ylabel('score')
 
-  # Save the plot as an image file
-  plt.savefig(f"{control_name}_scores.png", dpi=300, bbox_inches='tight')
+        # Save the plot as an image file
+        plt.savefig(f"{control_name}_scores.png", dpi=300, bbox_inches='tight')
