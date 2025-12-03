@@ -17,6 +17,7 @@ import gym
 import gymnasium
 import matplotlib.pyplot as plt
 import pickle
+import cv2
 
 from dopamine.discrete_domains import atari_lib
 from dopamine.discrete_domains import gym_lib
@@ -46,22 +47,26 @@ print('Number of model parameters: %.2e' % model_param_count)
 
 # PREPROCESSING
 def convert_render(img):
-  gray_img = (img[:,:,0] + img[:,:,1] + img[:,:,2]) / 3 # averaging for RGB -> grayscale
+  gray_img = (0.289 * img[:,:,0] + 0.587 * img[:,:,1] + 0.214 * img[:,:,2]) # averaging for RGB -> grayscale using CCIR 601
+  gray_img = cv2.resize(gray_img, (84, 84), interpolation=cv2.INTER_AREA)
   # now the image is a 400 x 600 grayscale or 500 x 500 grayscale
-  n = int(img.shape[0]/100)
-  m = int(img.shape[1]/100)
+  # n = int(img.shape[0]/100)
+  # m = int(img.shape[1]/100)
 
-  conv_layer = tf.keras.layers.Conv2D(
-    filters=1,          # Number of output filters/channels
-    kernel_size=(n, m),  # Kernel makes it 100 x 100
-    strides=(n, m)      # How far the kernel moves at each step
-  )
-  tens = tf.convert_to_tensor(gray_img)
-  tens1 = tf.reshape(tens, (1, img.shape[0], img.shape[1], 1))
-  resized = conv_layer(tens1).numpy() # compressed
+  # conv_layer = tf.keras.layers.Conv2D(
+  #   filters=1,          # Number of output filters/channels
+  #   kernel_size=(n, m),  # Kernel makes it 100 x 100
+  #   strides=(n, m)      # How far the kernel moves at each step
+  # )
+  # tens = tf.convert_to_tensor(gray_img)
+  # tens1 = tf.reshape(tens, (1, img.shape[0], img.shape[1], 1))
+  # resized = conv_layer(tens1).numpy() # compressed
+  
 
-  gray_img = resized[0, 8:92, 8:92, :] # center cropped
+  # gray_img = resized[0, 8:92, 8:92, :] # center cropped
   # gray_img = cropped_tensor.numpy()
+  # print(np.expand_dims(gray_img, axis=-1).shape)
+  gray_img = np.expand_dims(gray_img, axis=-1)
 
   # returns the 84 x 84 x 1 image :)
   return gray_img
@@ -1571,7 +1576,6 @@ env_fn = build_env_fn(game_name)
 env_batch = [env_fn() for i in range(num_envs)]
 
 rng = jax.random.PRNGKey(0)
-# NOTE: the evaluation num_steps is shorter than what is used for paper experiments for speed.
 rew_sum, frames, rng = _batch_rollout(
     rng, env_batch, optimal_action, num_steps=5000, log_interval=100)
 
@@ -1596,13 +1600,13 @@ for control_name in [
   rew_sum, frames, rng = _batch_rollout(
     rng, env_batch, control_optimal_action, num_steps=200, log_interval=1) # 200 is a good time limit for control tasks
   
-  print('scores:', rew_sum, 'average score:', np.mean(rew_sum))
+  print('scores:', list(rew_sum), 'average score:', np.mean(rew_sum))
   print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
 
-  plt.plot(rew_sum, 'o')
-  plt.title(f'Scores for {control_name}')
-  plt.xlabel('trial index')
-  plt.ylabel('score')
+  # plt.plot(rew_sum, 'o')
+  # plt.title(f'Scores for {control_name}')
+  # plt.xlabel('trial index')
+  # plt.ylabel('score')
 
-  # Save the plot as an image file
-  plt.savefig(f"{control_name}_scores.png", dpi=300, bbox_inches='tight')
+  # # Save the plot as an image file
+  # plt.savefig(f"{control_name}_scores.png", dpi=300, bbox_inches='tight')

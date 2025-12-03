@@ -22,6 +22,7 @@ conda run -n gymenv pip install "optax==0.1.2"
 conda run -n gymenv pip install scipy
 conda run -n gymenv pip install "numpy==1.18.5"
 conda run -n gymenv pip install "chex==0.1.5"
+conda run -n gymenv pip install "opencv-python==4.5.5.62"
 conda run -n gymenv pip install ipykernel
 
 wget https://storage.googleapis.com/rl-infra-public/multi_game_dt/checkpoint_38274228.pkl -O checkpoint_38274228.pkl
