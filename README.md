@@ -12,6 +12,7 @@ Due to outdated dependencies, we ported the notebook into a standalone Python sc
 
 1. **Prerequisites**
    - Ensure that **Anaconda** or **Miniconda** is installed on your system.
+   module load anaconda3
 
 2. **Run the Setup Script**
    ```bash
@@ -19,7 +20,7 @@ Due to outdated dependencies, we ported the notebook into a standalone Python sc
    ```
    This will:
    - Create a conda environment named **`gymenv`** with all necessary dependencies.
-   - Download the pretrained weights (~1.5 GB) locally.
+   - Download the pretrained weights (~1.5 GB) locally. THESE WEIGHTS ARE NOT PRE-TRAINED. The pre-trained weights are available in an uploaded .zip file.
 
    > *Note:*  
    > The original paper did not provide explicit dependency versions.  
@@ -40,17 +41,21 @@ Due to outdated dependencies, we ported the notebook into a standalone Python sc
    ```
 
    By default, the model:
-   - Runs for **5000 steps**
-   - Uses **4 parallel environments**
-   - Trains on the **Atari Breakout** game
+   - Runs for **200 steps**
+   - Uses **10 parallel environments**
+   - Runs on all 3 control environments
 
 3. **Modify Parameters**
    To change the training configuration, open `main.py` and edit:
    ```python
-   num_steps = 5000        # total number of training steps
-   num_envs = 4            # number of parallel environments
-   game_name = "Breakout"  # target Atari game
+   num_steps = 200        # total number of time steps
+   num_envs = 10            # number of parallel environments
    ```
+
+4. **Plotting**
+   Plotting requires fine-tuning data, which is not available in this repo
+   due to dependency conflicts. Please use the list output from the fine-tuning
+   repository to print the plots.
 
 ---
 

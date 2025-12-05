@@ -1,0 +1,31 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Loading trajectories from 4 dataset files...
+  Loading ppo_datasets/ppo_pendulum_10000_dataset.pkl...
+    Added 500 trajectories
+  Loading ppo_datasets/ppo_pendulum_20000_dataset.pkl...
+    Added 500 trajectories
+  Loading ppo_datasets/ppo_pendulum_50000_dataset.pkl...
+    Added 500 trajectories
+  Loading ppo_datasets/ppo_pendulum_5000_dataset.pkl...
+    Added 500 trajectories
+
+Total trajectories loaded: 2000
+Sample trajectory keys: dict_keys(['observations', 'actions', 'rewards', 'returns_to_go'])
+Sample trajectory length: 200
+/home/hice1/wfrendreiss3/.conda/envs/finetune/lib/python3.12/site-packages/haiku/_src/attention.py:96: DeprecationWarning: w_init_scale is deprecated; please pass an explicit weight initialiser instead.
+  warnings.warn(
+Loading pretrained MGDT checkpoint...
+Batch rollout called
+/home/hice1/wfrendreiss3/.conda/envs/finetune/lib/python3.12/site-packages/pygame/pkgdata.py:25: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import resource_stream, resource_exists
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1764880881.154650  897459 gpu_device.cc:2020] Created device /job:localhost/replica:0/task:0/device:GPU:0 with 138195 MB memory:  -> device: 0, name: NVIDIA H200, pci bus id: 0000:40:00.0, compute capability: 9.0
+I0000 00:00:1764880881.156287  897459 gpu_device.cc:2020] Created device /job:localhost/replica:0/task:0/device:GPU:1 with 140821 MB memory:  -> device: 1, name: NVIDIA H200, pci bus id: 0000:66:00.0, compute capability: 9.0
+I0000 00:00:1764880881.157606  897459 gpu_device.cc:2020] Created device /job:localhost/replica:0/task:0/device:GPU:2 with 140821 MB memory:  -> device: 2, name: NVIDIA H200, pci bus id: 0000:d2:00.0, compute capability: 9.0
+I0000 00:00:1764880881.158802  897459 gpu_device.cc:2020] Created device /job:localhost/replica:0/task:0/device:GPU:3 with 140821 MB memory:  -> device: 3, name: NVIDIA H200, pci bus id: 0000:e4:00.0, compute capability: 9.0
+/home/hice1/wfrendreiss3/.conda/envs/finetune/lib/python3.12/site-packages/haiku/_src/attention.py:96: DeprecationWarning: w_init_scale is deprecated; please pass an explicit weight initialiser instead.
+  warnings.warn(
+scores: [-1130.0, -1141.0, -1151.0, -1508.0, -1133.0, -1189.0, -871.0, -1014.0, -1569.0, -1280.0] average score: -1198.6
+total score: mean: -1198.5999755859375 std: 198.90560913085938 max: -871.0

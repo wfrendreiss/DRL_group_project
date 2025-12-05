@@ -31,10 +31,13 @@ TPU_DRIVER_MODE = 1
 import haiku as hk
 import optax
 
-# Load model checkpoint
-# @title Load model checkpoint
-
 model_params, model_state = pickle.load(open('checkpoint_38274228.pkl', 'rb'))
+
+"""
+The file above is the baseline pkl provided by the paper. To test on the fine-tuned model,
+there is a rollout test function in the fine-tuning folder that does effectively the same thing
+and calls a modified version of the main function.
+"""
 
 
 # file_path = 'gs://rl-infra-public/multi_game_dt/checkpoint_38274228.pkl'
