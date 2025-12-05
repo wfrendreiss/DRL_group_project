@@ -28,7 +28,7 @@ Due to outdated dependencies, we ported the notebook into a standalone Python sc
    Update any import lines to:
 
    ```python
-   from stable_baselines3.common.atari_wrappers import MaxAndSkipEnv, WarpFrame, ClipRewardEnv, FrameStack
+   from stable_baselines3.common import atari_wrappers
     
 ---
 
