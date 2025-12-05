@@ -8,7 +8,7 @@ Due to outdated dependencies, we ported the notebook into a standalone Python sc
 
 ---
 
-## Setup Guide
+## Setup Guide (Or use the Jupyter notebook)
 
 1. **Prerequisites**
    - Ensure that **Anaconda** or **Miniconda** is installed on your system.
@@ -20,15 +20,19 @@ Due to outdated dependencies, we ported the notebook into a standalone Python sc
    ```
    This will:
    - Create a conda environment named **`gymenv`** with all necessary dependencies.
-   - Download the pretrained weights (~1.5 GB) locally. THESE WEIGHTS ARE NOT PRE-TRAINED. The pre-trained weights are available in an uploaded .zip file.
+3. **Update Import Statements for Stable Baselines 3**
 
-   > *Note:*  
-   > The original paper did not provide explicit dependency versions.  
-   > All versions were determined through trial and error, so some library compatibility issues may occur.
+   The original MGDT code used deprecated `baselines.common.atari_wrappers`.  
+   In this project, we switch to **Stable Baselines 3** wrappers instead.
 
+   Update any import lines to:
+
+   ```python
+   from stable_baselines3.common.atari_wrappers import MaxAndSkipEnv, WarpFrame, ClipRewardEnv, FrameStack
+    
 ---
 
-## Run Guide
+## Run Guide (Or use the notebook)
 
 1. **Activate the Environment**
    ```bash
@@ -41,44 +45,17 @@ Due to outdated dependencies, we ported the notebook into a standalone Python sc
    ```
 
    By default, the model:
+   - Loads cartpole weights (can change)
    - Runs for **200 steps**
    - Uses **10 parallel environments**
-   - Runs on all 3 control environments
+   - Runs on all Cartpole control environment (can change)
 
-3. **Modify Parameters**
+4. **Modify Parameters**
    To change the training configuration, open `main.py` and edit:
    ```python
    num_steps = 200        # total number of time steps
    num_envs = 10            # number of parallel environments
    ```
-
-4. **Plotting**
-   Plotting requires fine-tuning data, which is not available in this repo
-   due to dependency conflicts. Please use the list output from the fine-tuning
-   repository to print the plots.
-
----
-
-## File Overview
-
-| File | Description |
-|------|--------------|
-| `setup.sh` | Creates the conda environment and installs dependencies |
-| `main.py` | Runs the MGDT model with customizable parameters |
-| `output.txt` | Contains the console log of an example rollout |
-| `Breakout_scores.png` | Plot of the model’s performance scores in Breakout |
-| `README.md` | Documentation for setup and usage |
-
----
-
-## Example Rollout and Results
-
-We have included a **rollout log** (5000 steps, 4 envs, Atari Breakout) and its corresponding **performance plot** for reference:
-
-- **[output.txt](./output.txt)** — This file records the console output during a full example rollout of the pretrained model.
-- **[Breakout_scores.png](./Breakout_scores.png)** — This image visualizes the final performance metrics from the example rollout.
-
----
 
 ## Reference
 
