@@ -31,7 +31,8 @@ TPU_DRIVER_MODE = 1
 import haiku as hk
 import optax
 
-model_params, model_state = pickle.load(open('checkpoint_38274228.pkl', 'rb'))
+# LOAD THE MODEL WEIGHTS (ENSURE THE CORRECT WEIGHTS ARE LOADED IN FOR THE CORRECT GAME)
+model_params, model_state = pickle.load(open('cartpole_checkpoint_ft_step10000.pkl', 'rb'))
 
 """
 The file above is the baseline pkl provided by the paper. To test on the fine-tuned model,
@@ -1571,22 +1572,18 @@ def _batch_rollout(rng, envs, policy_fn, num_steps=2500, log_interval=None):
 #------ TEST LOOP (OUR WORK, ADAPTED)
 #---------------------------------
 
-for control_name in [
-  'CartPole', 
-  'MountainCar', 
-  'Pendulum'
-  ]:
-  num_envs = 10
-  # print("Checkpoint 1")
-  env_fn = build_control_env_fn(control_name)
-  # print("Checkpoint 2")
-  env_batch = [env_fn() for i in range(num_envs)]
-  # print("Checkpoint 3")
-  rng = jax.random.PRNGKey(0)
+control_name = 'CartPole' # GAME NAME: USE 'CartPole', or 'Pendulum', ensure the correct weights are loaded in the model_fn.apply() function
+num_envs = 10
+# print("Checkpoint 1")
+env_fn = build_control_env_fn(control_name)
+# print("Checkpoint 2")
+env_batch = [env_fn() for i in range(num_envs)]
+# print("Checkpoint 3")
+rng = jax.random.PRNGKey(0)
 
-  rew_sum, frames, rng = _batch_rollout(
-    rng, env_batch, control_optimal_action, num_steps=200, log_interval=1) # 200 is a good time limit for control tasks
-  
-  print('scores:', list(rew_sum), 'average score:', np.mean(rew_sum))
-  print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
+rew_sum, frames, rng = _batch_rollout(
+  rng, env_batch, control_optimal_action, num_steps=200, log_interval=1) # 200 is a good time limit for control tasks
+
+print('scores:', list(rew_sum), 'average score:', np.mean(rew_sum))
+print(f'total score: mean: {np.mean(rew_sum)} std: {np.std(rew_sum)} max: {np.max(rew_sum)}')
 
